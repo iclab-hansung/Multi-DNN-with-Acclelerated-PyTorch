@@ -1,0 +1,16 @@
+[0;1;32m●[0m jetson_stats.service - jetson_stats service
+   Loaded: loaded (/etc/systemd/system/jetson_stats.service; enabled; vendor preset: enabled)
+   Active: [0;1;32mactive (running)[0m since Fri 2021-05-28 17:25:04 KST; 5s ago
+ Main PID: 4587 (jtop)
+    Tasks: 3 (limit: 4915)
+   CGroup: /system.slice/jetson_stats.service
+           ├─4587 /usr/bin/python /usr/local/bin/jtop service --force
+           ├─4670 /usr/bin/python /usr/local/bin/jtop service --force
+           └─4677 /usr/bin/python /usr/local/bin/jtop service --force
+
+ 5월 28 17:25:04 nvidia-desktop systemd[1]: Started jetson_stats service.
+ 5월 28 17:25:05 nvidia-desktop jtop[4587]: [INFO] jtop.core.common - fan loaded on /sys/devices/pwm-fan
+ 5월 28 17:25:05 nvidia-desktop jtop[4587]: [INFO] jtop.core.common - jetson_clocks loaded on /usr/bin/jetson_clocks
+ 5월 28 17:25:05 nvidia-desktop jtop[4587]: [INFO] jtop.core.common - tegrastats loaded on /usr/bin/tegrastats
+ 5월 28 17:25:05 nvidia-desktop jtop[4587]: [INFO] jtop.__main__ - jetson_stats server loaded
+ 5월 28 17:25:06 nvidia-desktop jtop[4587]: [INFO] jtop.core.fan - Mode set default status=False
