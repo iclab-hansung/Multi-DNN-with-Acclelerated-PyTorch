@@ -482,5 +482,6 @@ void forward_inception(th_arg *th){
        cond_i[nl->net->index_n]=0;
        pthread_cond_signal(&cond_t[nl->net->index_n]);
     }
+    
 	pthread_mutex_unlock(&mutex_t[nl->net->index_n]);		
 }
