@@ -85,15 +85,15 @@ void *predict_densenet(Net *densenet){
 		pthread_mutex_unlock(&mutex_t[densenet->index_n]);
         
     }
-    //cudaEventCreate(&event_A);
     cudaStreamSynchronize(streams[densenet->H_L][(densenet->index_s)%n_streamPerPool]);
     cudaEventRecord(end);
     cudaEventSynchronize(end);
     cudaEventElapsedTime(&time, start, end);
-	//std::cout<< "Dense model end time is" << exe_time << std::endl;
+
     std::cout << "\n*****"<<densenet->name<<" result*****" << "     Densenet exe time >>> " << time/1000 << "'s" <<std::endl;
-	std::cout << "index num = "<< densenet->index_n << "	priority num = "<< densenet->priority << "     Stream [" << densenet->H_L << "][" << (densenet->index_s)%n_streamPerPool << "]" << std::endl;
-	std::cout << (densenet->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
+	std::cout << "index num = "<< densenet->index_n << "	priority num = "<< densenet->priority << std::endl;
+	std::cout << "Stream [" << densenet->H_L << "][" << (densenet->index_s)%n_streamPerPool << "]" << std::endl;
+    //std::cout << (densenet->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
     std::cout << " " << std::endl;
 }
 
@@ -104,16 +104,9 @@ void forward_densenet(th_arg *th){
     int k =nl->net->index;
     at::Tensor out;
 
-    //at::cuda::setCurrentCUDAStream(streams[(nl->net->index_n)]);
     {   
         at::cuda::CUDAStreamGuard guard(streams[nl->net->H_L][(nl->net->index_s)%n_streamPerPool]); // high, low
-		// int p;
-		// cudaStreamGetindex_n(streams[(nl->net->index_n%n_streamPerPool)],&p);
-		// std::cout <<"index "<< (nl->net->index_n%n_streamPerPool) << "dense index_n num" << p << std::endl;
-        //at::cuda::CUDAStream p();
-        //std::cout<<"Dense stream id = "<<streams[0].unwrap().id()<<"\n";
-        
-        //std::cout << "Dense stream index : "<<((nl->net->index_n)%n_streamPerPool) << std::endl;
+
         if(k == nl->net->flatten){
             out = F::relu(inputs[0].toTensor(), F::ReLUFuncOptions().inplace(true));
             out = F::adaptive_avg_pool2d(out, F::AdaptiveAvgPool2dFuncOptions(1));
