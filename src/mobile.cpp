@@ -183,8 +183,9 @@ void *predict_mobilenet(Net *mobile){
     cudaEventElapsedTime(&time, start, end);
 
 	std::cout << "\n*****"<<mobile->name<<" result*****" << "     Mobilenet exe time >>> " << time/1000 << "'s" <<std::endl;
-	std::cout << "index num = "<< mobile->index_n << "	priority num = "<< mobile->priority << "     Stream [" << mobile->H_L << "][" << (mobile->index_s)%n_streamPerPool << "]" << std::endl;
-	std::cout << (mobile->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
+	std::cout << "index num = "<< mobile->index_n << "	priority num = "<< mobile->priority << std::endl;
+	std::cout << "Stream [" << mobile->H_L << "][" << (mobile->index_s)%n_streamPerPool <<"]" << std::endl;
+	//std::cout << (mobile->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
 	std::cout << " " << std::endl;
 	}
 
