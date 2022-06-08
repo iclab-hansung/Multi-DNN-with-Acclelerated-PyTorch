@@ -121,8 +121,9 @@ void *predict_resnet(Net *res){
     cudaEventSynchronize(end);
     cudaEventElapsedTime(&time, start, end);
     std::cout << "\n*****"<<res->name<<" result*****" << "     Resnet exe time >>> " << time/1000 << "'s" <<std::endl;
-	std::cout << "index num = "<< res->index_n << "	priority num = "<< res->priority << "     Stream [" << res->H_L << "][" << (res->index_s)%n_streamPerPool << "]" << std::endl;
-	std::cout << (res->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
+	std::cout << "index num = "<< res->index_n << "	priority num = "<< res->priority << std::endl;
+	std::cout << "Stream [" << res->H_L << "][" << (res->index_s)%n_streamPerPool <<"]" << std::endl;
+    //std::cout << (res->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
     std::cout << " " << std::endl;
 }
 
