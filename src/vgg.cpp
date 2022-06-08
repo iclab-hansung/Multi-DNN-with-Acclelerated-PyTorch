@@ -7,6 +7,7 @@
 #include <memory>
 #include <time.h>
 #include "vgg.h"
+#include <stdio.h>
 //#include "net.h"
 
 namespace F = torch::nn::functional;
@@ -71,11 +72,9 @@ void *predict_vgg(Net *vgg){
 		netlayer nl;
 		nl.net = vgg;
 		nl.net->index = i;
-		//std::cout << "nl.net index_n " <<nl.net->index_n << "\n";
 
 		th_arg th;
 		th.arg = &nl;
-		//std::cout << "th.arg index_n " <<th.arg->net->index_n<<"\n";
 
 		thpool_add_work(thpool,(void(*)(void *))forward_vgg, (void*) &th);
 
@@ -94,10 +93,12 @@ void *predict_vgg(Net *vgg){
 	cudaEventRecord(end);
     cudaEventSynchronize(end);
     cudaEventElapsedTime(&time, start, end);
-	std::cout << "\n*****"<<vgg->name<<" result*****" << "     VGG exe time >>> " << time/1000 << "'s" <<std::endl;
-	std::cout << "index num = "<< vgg->index_n << "	priority num = "<< vgg->priority << "     Stream [" << vgg->H_L << "][" << (vgg->index_s)%n_streamPerPool << "]" << std::endl;
-	std::cout << (vgg->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
-	std::cout << " " << std::endl;	
+
+	std::cout << "\n*****"<<vgg->name<<" result*****" << "     vgg exe time >>> " << time/1000 << "'s" <<std::endl;
+	std::cout << "index num = "<< vgg->index_n << "	priority num = "<< vgg->priority << std::endl;
+	std::cout << "Stream [" << vgg->H_L << "][" << (vgg->index_s)%n_streamPerPool <<"]" << std::endl;
+	//std::cout << (vgg->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";	
+
 }
 
 void forward_vgg(th_arg *th){
@@ -107,12 +108,8 @@ void forward_vgg(th_arg *th){
 	int k = nl->net->index;
 	at::Tensor out;
 	
-
-	//at::cuda::setCurrentCUDAStream(streams[(nl->net->index_n)]);
 	{	// Current Stream을 streams[nl->net->H_L][(nl->net->index_n)%n_streamPerPool] 로 설정
 		at::cuda::CUDAStreamGuard guard(streams[nl->net->H_L][(nl->net->index_s)%n_streamPerPool]); // high, low
-		//std::cout << "StreamGuard H_L " << nl->net->H_L << std::endl;
-		//std::cout << "StreamGuard Index" << nl->net->index_n << std::endl;
 		if(k == nl->net->flatten){
 			out = inputs[0].toTensor().view({inputs[0].toTensor().size(0), -1});
 			inputs.clear();
@@ -122,7 +119,6 @@ void forward_vgg(th_arg *th){
 		else{
 			out = nl->net->layers[k].layer.forward(inputs).toTensor();
 			if(k+1 < nl->net->layers.size() && nl->net->layers[k+1].name == "relu"){
-				//std::cout << "k+1 : "<< k+1 << "\n";
 				nl->net->layers[k].output = out;
 				k++;
 				inputs.clear();
@@ -135,6 +131,5 @@ void forward_vgg(th_arg *th){
 	nl->net->index = k;
 	cond_i[nl->net->index_n]=0;
 	pthread_cond_signal(&cond_t[nl->net->index_n]);
-	pthread_mutex_unlock(&mutex_t[nl->net->index_n]);
-	//cudaStreamWaitEvent(streams[0],event_A,0);		
+	pthread_mutex_unlock(&mutex_t[nl->net->index_n]);		
 }
