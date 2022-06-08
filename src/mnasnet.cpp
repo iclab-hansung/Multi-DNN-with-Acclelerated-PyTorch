@@ -10,7 +10,7 @@
 #include <time.h>
 
 namespace F = torch::nn::functional;
-//using namespace std;
+using namespace std;
 
 
 void get_submodule_MNASNet(torch::jit::script::Module module, Net &net){
@@ -135,8 +135,9 @@ void *predict_MNASNet(Net *mnasnet){
     cudaEventElapsedTime(&time, start, end);
 
 	std::cout << "\n*****"<<mnasnet->name<<" result*****" << "     MNASnet exe time >>> " << time/1000 << "'s" <<std::endl;
-	std::cout << "index_n num = "<< mnasnet->index_n << "	priority num = "<< mnasnet->priority << "     Stream [" << mnasnet->H_L << "][" << (mnasnet->index_s)%n_streamPerPool << "]" << std::endl;
-	std::cout << (mnasnet->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
+	std::cout << "index_n num = "<< mnasnet->index_n << "	priority num = "<< mnasnet->priority << std::endl;
+	std::cout << "Stream [" << mnasnet->H_L << "][" << (mnasnet->index_s)%n_streamPerPool <<"]" << std::endl;
+	//std::cout << (mnasnet->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
 	std::cout << " " << std::endl;
 	}
 
