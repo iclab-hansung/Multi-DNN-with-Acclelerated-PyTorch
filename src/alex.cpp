@@ -59,8 +59,9 @@ void *predict_alexnet(Net *alex){
     cudaEventSynchronize(end);
     cudaEventElapsedTime(&time, start, end);
 	std::cout << "\n*****"<<alex->name<<" result*****" << "     Alexnet exe time >>> " << time/1000 << "'s" <<std::endl;
-	std::cout << "index num = "<< alex->index_n << "	priority num = "<< alex->priority <<"     Stream [" << alex->H_L << "][" << (alex->index_s)%n_streamPerPool << "]" << std::endl;
-	std::cout << (alex->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
+	std::cout << "index num = "<< alex->index_n << "	priority num = "<< alex->priority <<std::endl;
+	std::cout << "Stream [" << alex->H_L << "][" << (alex->index_s)%n_streamPerPool << "]" << std::endl;
+	//std::cout << (alex->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
 	std::cout << " " << std::endl;
 	}
 
