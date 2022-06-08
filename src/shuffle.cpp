@@ -150,9 +150,9 @@ void *predict_shuffle(Net *shuffle){
         cudaEventElapsedTime(&time, start, end);
 
         std::cout << "\n*****"<<shuffle->name<<" result*****" << "     Shufflenet exe time >>> " << time/1000 << "'s" <<std::endl;
-	std::cout << "index_n num = "<< shuffle->index_n << "	priority num = "<< shuffle->priority<< "     Stream [" << shuffle->H_L << "][" << stream_id[0] << "]" << std::endl;
-        std::cout << "Branch Stream ["<<stream_id[1]<<"]" << std::endl;
-	std::cout<<(shuffle->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) <<"\n";
+	std::cout << "index_n num = "<< shuffle->index_n << "	priority num = "<< shuffle->priority<< std::endl;
+        std::cout << "Stream [" << shuffle->H_L << "][" << stream_id[0] << "]" << "Branch Stream ["<<stream_id[1]<<"]" << std::endl;
+	//std::cout<<(shuffle->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) <<"\n";
         std::cout << " " << std::endl;
 }
 
@@ -161,22 +161,16 @@ void forward_shuffle(th_arg *th){
 	netlayer *nl = th->arg;
         std::vector<torch::jit::IValue> inputs;
         int k = nl->net->index;
-        int n_all = nl->net->n_all;
+        // int n_all = nl->net->n_all;
         int j;
         std::vector<int> stream_id = {(nl->net->index_s)%n_streamPerPool, abs(nl->net->index_b)%n_streamPerPool};
         
-        //at::cuda::setCurrentCUDAStream(streams[nl->net->H_L][stream_id[0]]);
-        //int p;
-        //cudaStreamGetPriority(streams[(nl->net->index_n%n_streamPerPool)],&p);
-        //std::cout <<"index "<< (nl->net->index_n%n_streamPerPool) << "shuffle index_n num" << p << std::endl;
-
         if(k==0) 
                 inputs = nl->net->input;
         else{
                 inputs.push_back(nl->net->layers[k + nl->net->layers[k].input_idx].output);
-                //std::cout << " PUSH BACK " << "\n";
         }
-        //std::cout << nl->net->layers[k].name << "\n";
+
         if(nl->net->layers[k].name == "branch1"){
 		cond_i[nl->net->index_n]=0;
 		pthread_cond_signal(&cond_t[nl->net->index_n]);
@@ -186,8 +180,7 @@ void forward_shuffle(th_arg *th){
         at::Tensor out;
 
         {
-                at::cuda::CUDAStreamGuard guard(streams[nl->net->H_L][stream_id[0]]); // high, low
-                //std::cout<< nl->net->index_n <<"\n";
+                at::cuda::CUDAStreamGuard guard(streams[nl->net->H_L][stream_id[0]]); 
                 if(k == nl->net->flatten){  //mean
                         out = inputs[0].toTensor().mean({2,3});
                         inputs.clear();
@@ -211,7 +204,6 @@ void forward_shuffle(th_arg *th){
                 }else{
                         //chunk_and_branch , branch1, branch2 , conv, maxpool
                         if(nl->net->layers[k].name == "branch1"){
-                                //at::cuda::setCurrentCUDAStream(streams[nl->net->H_L][stream_id[0]]);
                                 {
                                         at::cuda::CUDAStreamGuard guard(streams[nl->net->H_L][stream_id[0]]); // stream_id[0] = nl->net->index
                                         j=1;
@@ -219,7 +211,6 @@ void forward_shuffle(th_arg *th){
                                         cudaEventRecord(nl->net->record[0],streams[nl->net->H_L][stream_id[0]]);
                                 }
                         }else if(nl->net->layers[k].name == "branch2"){
-                                //at::cuda::setCurrentCUDAStream(streams[nl->net->H_L][stream_id[1]]);
                                 {
                                         at::cuda::CUDAStreamGuard guard(streams[nl->net->H_L][stream_id[1]]); // stream_id[1] = 29 (32-3)
                                         j=-1;
