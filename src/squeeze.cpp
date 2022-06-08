@@ -107,13 +107,6 @@ void get_submodule_squeeze(torch::jit::script::Module module, Net &net){
 
 void *predict_squeeze(Net *squeeze){
 	int i=0;
-	// netlayer nl;
-	// nl.net = squeeze;
-	// nl.net->index = i;
-
-	// th_arg th;
-	// th.arg = &nl;
-
 	float time;
     cudaEvent_t start, end;
     cudaEventCreate(&start);
@@ -122,10 +115,7 @@ void *predict_squeeze(Net *squeeze){
 
 	std::vector<int> stream_id = {(squeeze->index_s)%n_streamPerPool, abs(squeeze->index_b)%n_streamPerPool};
 	for(i=0;i<squeeze->layers.size();i++){
-		// if(i==1 || i==39)
-		// 	continue;
-		// if(squeeze->layers[i].name == "relu")
-		// 	continue;
+
 		pthread_mutex_lock(&mutex_t[squeeze->index_n]);
 		cond_i[squeeze->index_n] = 1;
 		squeeze->layers[i].exe_success = false;
@@ -154,8 +144,9 @@ void *predict_squeeze(Net *squeeze){
     cudaEventSynchronize(end);
     cudaEventElapsedTime(&time, start, end);
 	std::cout << "\n*****"<<squeeze->name<<" result*****" << "     Squeezenet exe time >>> " << time/1000 << "'s" <<std::endl;
-	std::cout << "index num = "<< squeeze->index_n << "	priority num = "<< squeeze->priority<< "     Stream [" << squeeze->H_L << "][" << stream_id[0] << "]" << std::endl;
-	std::cout<<(squeeze->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) <<"\n";
+	std::cout << "index num = "<< squeeze->index_n << "	priority num = "<< squeeze->priority<< std::endl;
+	std::cout << "Stream [" << squeeze->H_L << "][" << stream_id[0] << "]" << "Branch Stream ["<<stream_id[1]<<"]" << std::endl;
+	//std::cout<<(squeeze->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) <<"\n";
 	printf("\n");
 }
 
@@ -168,8 +159,6 @@ void forward_squeeze(th_arg *th){
 	int success_check_idx; // expand1x1 = k+1, expand3x3 = k-1
 	std::vector<int> stream_id = {(nl->net->index_s)%n_streamPerPool, abs(nl->net->index_b)%n_streamPerPool};
 
-	//at::cuda::setCurrentCUDAStream(streams[(nl->net->index_n)]);
-	
 	if(nl->net->layers[k].name == "expand3x3"){ 
 		int input_idx = k + nl->net->layers[k].input_idx;
 		inputs.push_back(nl->net->layers[input_idx].output);
@@ -187,18 +176,12 @@ void forward_squeeze(th_arg *th){
 	at::Tensor out;
 	{
 		at::cuda::CUDAStreamGuard guard(streams[nl->net->H_L][stream_id[0]]); // high, low
-		// int p;
-		// cudaStreamGetPriority(streams[(nl->net->index_n%n_streamPerPool)],&p);
-		// std::cout <<"index "<< (nl->net->index_n%n_streamPerPool) << "squeeze priority num" << p << std::endl;
+		
 		if(k == nl->net->flatten){
-			//std::cout <<"Flatten"<<std::endl;
-			//printf("Flatten\n");				
 			out = nl->net->layers[k].layer.forward(inputs).toTensor();
 			out = out.view({out.size(0), -1});
 		}
 		else if(nl->net->layers[k].name == "concat"){
-			//std::cout <<"net index : "<< nl->net->index_n << "	k : "<< k << "concat" << std::endl;
-			//printf("net index : %d	k : %d	concat\n", nl->net->index_n, k);				
 			std::vector<at::Tensor> cat_input;
 			for(int i=0;i<nl->net->layers[k].from_idx.size();i++){
 				int concat_idx = k + nl->net->layers[k].from_idx[i];
@@ -210,8 +193,6 @@ void forward_squeeze(th_arg *th){
 			if(nl->net->layers[k].name == "expand1x1"){
 				{
 					at::cuda::CUDAStreamGuard guard(streams[nl->net->H_L][stream_id[0]]);
-					//std::cout <<"net index : "<< nl->net->index_n <<"	k : "<< k << "Expand1x1"<< std::endl;
-					//printf("net index : %d	k : %d	Expand1x1\n", nl->net->index_n, k);
 					success_check_idx=k+1;					
 					out = nl->net->layers[k].layer.forward(inputs).toTensor();
 					out = torch::relu(out); // expand1x1_activation
@@ -221,8 +202,6 @@ void forward_squeeze(th_arg *th){
 			else if(nl->net->layers[k].name == "expand3x3"){
 				{	
 					at::cuda::CUDAStreamGuard guard(streams[nl->net->H_L][stream_id[1]]); 
-					//std::cout <<"net index : "<< nl->net->index_n <<"	k : "<< k << "Expand3x3"<< std::endl;
-					//printf("net index : %d	k : %d	Expand3x3\n", nl->net->index_n, k);
 					success_check_idx=k-1;
 					out = nl->net->layers[k].layer.forward(inputs).toTensor();
 					out = torch::relu(out);	// expand3x3_activation
@@ -230,19 +209,14 @@ void forward_squeeze(th_arg *th){
 				}
 			}
 			else{ // squeeze
-				//std::cout <<"net index : "<< nl->net->index_n <<"	k : "<< k <<"Squeeze"<< std::endl;
-				//printf("net index : %d	k : %d	Squeeze\n", nl->net->index_n, k);				
 				out = nl->net->layers[k].layer.forward(inputs).toTensor();
 				out = torch::relu(out);	// squeeze_activation
 			}
 		}
 		else{
-			//std::cout <<"net index : "<< nl->net->index_n <<"	k : "<< k << "   layer name : " << nl->net->layers[k].name << "\n";
-			//printf("net index : %d	k : %d	layer name : %s\n", nl->net->index_n, k, nl->net->layers[k].name);
 			out = nl->net->layers[k].layer.forward(inputs).toTensor();
 			
 			if(k+1 < nl->net->layers.size() && nl->net->layers[k+1].name == "relu"){
-				//std::cout << nl->net->index_n << "	k : "<< k << " relu" << std::endl;
 				nl->net->layers[k].output = out;
 				k++; 
 				inputs.clear();
@@ -274,7 +248,3 @@ void forward_squeeze(th_arg *th){
 	}
 	pthread_mutex_unlock(&mutex_t[nl->net->index_n]);		
 }
-
-
-
-
