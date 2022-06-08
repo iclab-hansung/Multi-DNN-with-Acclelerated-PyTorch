@@ -326,7 +326,6 @@ void *predict_inception(Net *inception){
     x_ch2.to(at::kCUDA);
 
     auto x_cat = torch::cat({x_ch0,x_ch1,x_ch2},1).to(at::kCUDA);
-    // std::vector<int> stream_id = {(inception->index_n)%n_streamPerPool, abs(n_streamPerPool-((inception->index_n)*3+1))%n_streamPerPool, abs(n_streamPerPool-((inception->index_n)*3+2))%n_streamPerPool, abs(n_streamPerPool-((inception->index_n)*3+3))%n_streamPerPool};
     std::vector<int> stream_id = {(inception->index_s)%n_streamPerPool, abs(inception->index_b)%n_streamPerPool, abs((inception->index_b)-1)%n_streamPerPool, abs((inception->index_b)-2)%n_streamPerPool};
     inception->input[0] = x_cat;
 
@@ -370,9 +369,8 @@ void *predict_inception(Net *inception){
     cudaEventElapsedTime(&time, start, end);
 
     std::cout << "\n*****"<<inception->name<<" result*****" << "     Inception v3 exe time >>> " << time/1000 << "'s" <<std::endl;
-	std::cout << "index num = "<< inception->index_n << "	priority num = "<< inception->priority << "     Stream [" << inception->H_L << "][" << stream_id[0] << "]" << std::endl;
-    std::cout << "Branch Stream ["<<stream_id[1]<<"] ["<<stream_id[2]<<"] ["<<stream_id[3]<<"]" << std::endl;
-	std::cout << (inception->layers[i-1].output).slice(/*dim=*/1, /*start=*/0, /*end=*/15) << "\n";
+	std::cout << "index num = "<< inception->index_n << "	priority num = "<< inception->priority << std::endl;
+    std::cout << "Stream [" << inception->H_L << "][" << (stream_id[0])%n_streamPerPool <<"]" << std::endl;
     printf("\n");
     }
 
@@ -382,7 +380,6 @@ void forward_inception(th_arg *th){
 	int k = nl->net->index;
     int n_all = nl->net->n_all;
     std::vector<torch::jit::IValue> inputs;
-    //std::vector<int> stream_id = {(nl->net->index_n)%n_streamPerPool, abs(n_streamPerPool-((nl->net->index_n)*3+1))%n_streamPerPool, abs(n_streamPerPool-((nl->net->index_n)*3+2))%n_streamPerPool, abs(n_streamPerPool-((nl->net->index_n)*3+3))%n_streamPerPool};
     std::vector<int> stream_id = {(nl->net->index_s)%n_streamPerPool, abs(nl->net->index_b)%n_streamPerPool, abs((nl->net->index_b)-1)%n_streamPerPool, abs((nl->net->index_b)-2)%n_streamPerPool};
     if(nl->net->layers[k].input_idx != 0){
         inputs.push_back(nl->net->layers[k + nl->net->layers[k].input_idx].output);
@@ -406,7 +403,6 @@ void forward_inception(th_arg *th){
             out = nl->net->layers[k].layer.forward(inputs).toTensor();
         }
         else if(nl->net->layers[k].skip > 0){   //branch
-            //at::cuda::setCurrentCUDAStream(streams[stream_id[(nl->net->layers[k].event_idx)%4]]);
             {
                 at::cuda::CUDAStreamGuard guard(streams[nl->net->H_L][stream_id[(nl->net->layers[k].event_idx)%4]]); //event_idx == branch_num
                 out = inputs[0].toTensor();
@@ -442,8 +438,6 @@ void forward_inception(th_arg *th){
             
                 k--;
                 int record = nl->net->layers[k].event_idx;
-                // Stream에서 event 발생시 위치 표시
-                // cudaEventRecord(nl->net->record[record], 0);
                 cudaEventRecord(nl->net->record[record], streams[nl->net->H_L][stream_id[(nl->net->layers[k].event_idx)%4]]);
             }
         }
