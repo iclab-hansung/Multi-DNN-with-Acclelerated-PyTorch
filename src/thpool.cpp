@@ -15,7 +15,6 @@
 #include "net.h"
 //#include "utils.h"
 #include <sched.h>
-#include <sched.h>
 
 #ifdef THPOOL_DEBUG
 #define THPOOL_DEBUG 1
@@ -32,6 +31,7 @@
 #define RT_THREAD 1
 #define GAP 2
 #define MPANIC(x) ; assert(x != NULL) //조건에 맞지않으면 중단
+
 
 
 static volatile int threads_keepalive;
@@ -67,8 +67,12 @@ static void swap_job(Priqueue *priqueue,unsigned int a, unsigned int b);
 
 
 /* Initialise thread pool */
+#if FIFOQ
+struct thpool_* thpool_init(int num_threads){
+#else
 struct thpool_* thpool_init(int num_threads, int n_all){
-
+#endif
+	
 	threads_on_hold   = 0;
 	threads_keepalive = 1;
 
@@ -83,9 +87,25 @@ struct thpool_* thpool_init(int num_threads, int n_all){
 		err("thpool_init(): Could not allocate memory for thread pool\n");
 		return NULL;
 	}
+
+	
 	thpool_p->num_threads_alive   = 0;
 	thpool_p->num_threads_working = 0;
+	#if FIFOQ
+
+	#else
 	thpool_p->thread_length = num_threads;
+	#endif
+	
+	#if FIFOQ
+	/* Initialise the job queue */
+	if (jobqueue_init(&thpool_p->jobqueue) == -1){
+		err("thpool_init(): Could not allocate memory for job queue\n");
+		free(thpool_p);
+		return NULL;
+	}
+	
+	#else
 	/* Initialise the job queue */
 	if ((thpool_p->priqueue = priqueue_init(n_all))==NULL)
 	{
@@ -93,12 +113,18 @@ struct thpool_* thpool_init(int num_threads, int n_all){
 		free(thpool_p);
 		return NULL;
 	}
+	#endif
 
 	/* Make threads in pool */
 	thpool_p->threads = (struct thread**)malloc(num_threads * sizeof(struct thread *));
 	if (thpool_p->threads == NULL){
 		err("thpool_init(): Could not allocate memory for threads\n");
+		#if FIFOQ
+		jobqueue_destroy(&thpool_p->jobqueue);
+		#else
 		priqueue_free(thpool_p->priqueue);
+		#endif
+		
 		free(thpool_p);
 		return NULL;
 	}
@@ -110,18 +136,31 @@ struct thpool_* thpool_init(int num_threads, int n_all){
 	int n;
 	cpu_set_t cpuset;
 
-	for (n = 0; n < num_threads; n++)
-	{
+	for (n=0; n<num_threads; n++){
 		thread_init(thpool_p, &thpool_p->threads[n], n);
+		#if FIFOQ
+		if(n == (num_threads-1)){
+			thpool_p->threads[n]->flag = 1;
+		}
+		else{
+			thpool_p->threads[n]->flag = 0;
+		}
+		
+ 
+		/* kmsjames 2020 0215 bug fix for pinning each thread on a specified CPU */
+		#else
 		CPU_ZERO(&cpuset);
-		CPU_SET(n % 8 , &cpuset);
-		pthread_setaffinity_np(thpool_p->threads[n]->pthread,sizeof(cpu_set_t),&cpuset);
+		CPU_SET(n, &cpuset); //only this thread has the affinity for the 'n'-th CPU	
+		pthread_setaffinity_np(thpool_p->threads[n]->pthread, sizeof(cpu_set_t), &cpuset);
+		#endif
+
 #if THPOOL_DEBUG
 		printf("THPOOL_DEBUG: Created thread %d in pool \n", n);
 #endif
 	}
 
 	/* Wait for threads to initialize */
+
 	while (thpool_p->num_threads_alive != num_threads)
 	{
 	}
@@ -144,14 +183,21 @@ int thpool_add_work(thpool_* thpool_p, void (*function_p)(void*), void *arg_p){
 	newjob->function=function_p;
 	newjob->arg=arg_p;
 
+	#if FIFOQ
+
+	#else
 
 	newjob->priority = ((th_arg*)arg_p)->arg->net->priority;	// priority Queue 적용
 	//std::cout << "new job priority" << newjob->priority << std::endl;
+	#endif
 
 	
 	/* add job to queue */
-	//jobqueue_push(&thpool_p->jobqueue, newjob);	
+	#if FIFOQ
+	jobqueue_push(&thpool_p->jobqueue, newjob);
+	#else	
 	priqueue_insert(thpool_p->priqueue, newjob);	// priority Queue 적용
+	#endif
 
 
 	return 0;
@@ -247,7 +293,9 @@ int thpool_num_threads_working(thpool_* thpool_p){
  */
 static int thread_init (thpool_* thpool_p, struct thread** thread_p, int id){
 
-#ifdef RT_THREAD
+#if FIFOQ
+
+#else
         pthread_attr_t attr;
         struct sched_param param;
 
@@ -266,13 +314,12 @@ static int thread_init (thpool_* thpool_p, struct thread** thread_p, int id){
 	(*thread_p)->thpool_p = thpool_p;
 	(*thread_p)->id       = id;
 
-#ifndef RT_THREAD
+#if FIFOQ
 		pthread_create(&(*thread_p)->pthread, NULL, (void* (*)(void*))thread_do, (*thread_p));
 #else
 		pthread_create(&(*thread_p)->pthread, &attr, (void* (*)(void*))thread_do, (*thread_p));
 #endif
 
-	//pthread_create(&(*thread_p)->pthread, NULL, (void* (*)(void*))thread_do, (*thread_p));
 	pthread_detach((*thread_p)->pthread);
 	return 0;
 }
@@ -332,8 +379,11 @@ static void *thread_do(struct thread *thread_p)
 
 	while (threads_keepalive)
 	{
-
+		#if FIFOQ
+		bsem_wait(thpool_p->jobqueue.has_jobs);
+		#else
 		bsem_wait(thpool_p->priqueue->hasjobs);
+		#endif
 
 		if (threads_keepalive)
 		{
@@ -345,15 +395,23 @@ static void *thread_do(struct thread *thread_p)
 			/* Read job from queue and execute it*/
 			void (*func_buff)(void *); // buuffer = 데이터 임시 저장
 			void *arg_buff;
+			#if FIFOQ
+			job *job_p = jobqueue_pull(&thpool_p->jobqueue);
+			#else
 			job *job_p = priqueue_pop(thpool_p->priqueue);
+			#endif
 			//std::cout << "poped job`s priority" << job_p->priority << std::endl;
 			if (job_p)
 			{
 				func_buff = job_p->function;
 				arg_buff = job_p->arg;
-				
+				#if FIFOQ
+				((th_arg*)arg_buff)->flag = 0;  //thread_p->flag;
+				#else
+
+				#endif
 				//thread_p->exe_time = job_p->exe_time;
-//				fprintf(timing, "%d,%lf\n", ((netlayer*)arg_buff)->net.index_n, what_time_is_it_now());
+				//fprintf(timing, "%d,%lf\n", ((netlayer*)arg_buff)->net.index_n, what_time_is_it_now());
 				func_buff(arg_buff);
 				free(job_p);
 			}
@@ -369,7 +427,7 @@ static void *thread_do(struct thread *thread_p)
 	}
 	pthread_mutex_lock(&thpool_p->thcount_lock);
 	thpool_p->num_threads_alive--;
-	pthread_mutex_unlock(&thpool_p->thcount_lock);;
+	pthread_mutex_unlock(&thpool_p->thcount_lock);
 	return NULL;
 }
 
@@ -423,7 +481,7 @@ static void jobqueue_clear(jobqueue* jobqueue_p){
  */
 static void jobqueue_push(jobqueue* jobqueue_p, struct job* newjob){
 
-	std::cout << "jobQ push" << std::endl;
+	//std::cout << "jobQ push" << std::endl;
 	pthread_mutex_lock(&jobqueue_p->rwmutex);
 	newjob->prev = NULL;
 
